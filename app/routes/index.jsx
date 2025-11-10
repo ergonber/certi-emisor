@@ -133,7 +133,7 @@ export default function CreateCertificate() {
     setupEventListeners();
   }, []);
 
-  const checkWalletConnection = async () => {
+ const checkWalletConnection = async () => {
   if (window.ethereum) {
     try {
       const accounts = await window.ethereum.request({ 
@@ -144,12 +144,17 @@ export default function CreateCertificate() {
         const web3Instance = new Web3(window.ethereum);
         const networkId = await web3Instance.eth.getChainId();
         
-        console.log("🔗 ChainID detectado:", networkId); // Para debugging
-        console.log("🔗 ChainID esperado:", SONIC_CHAIN_ID); // Para debugging
+        // Convertir BigInt a Number
+        const networkIdNumber = Number(networkId);
+        
+        console.log("🔗 ChainID detectado:", networkId);
+        console.log("🔗 ChainID convertido:", networkIdNumber);
+        console.log("🔗 ChainID esperado:", SONIC_CHAIN_ID);
+        console.log("🔗 ¿Red correcta?", networkIdNumber === SONIC_CHAIN_ID);
         
         setWeb3(web3Instance);
         setAccount(accounts[0]);
-        setNetworkId(networkId);
+        setNetworkId(networkIdNumber); // Guardar como Number
       }
     } catch (error) {
       console.error('Error checking wallet connection:', error);
@@ -157,17 +162,26 @@ export default function CreateCertificate() {
   }
 };
 
-  const setupEventListeners = () => {
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', (accounts) => {
-        if (accounts.length > 0) {
-          setAccount(accounts[0]);
-        } else {
-          setAccount(null);
-          setWeb3(null);
-          setNetworkId(null);
-        }
-      });
+const setupEventListeners = () => {
+  if (window.ethereum) {
+    window.ethereum.on('accountsChanged', (accounts) => {
+      if (accounts.length > 0) {
+        setAccount(accounts[0]);
+      } else {
+        setAccount(null);
+        setWeb3(null);
+        setNetworkId(null);
+      }
+    });
+
+    window.ethereum.on('chainChanged', (chainId) => {
+      // chainId viene como string hexadecimal, convertir a Number
+      const newChainId = parseInt(chainId, 16);
+      setNetworkId(newChainId);
+      window.location.reload();
+    });
+  }
+};
 
       window.ethereum.on('chainChanged', (chainId) => {
         setNetworkId(parseInt(chainId, 16));
