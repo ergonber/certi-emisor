@@ -25,7 +25,7 @@ export const getNetworkId = async (web3) => {
 
 export const switchToSonicNetwork = async () => {
   const sonicConfig = {
-    chainId: '0x3911',
+    chainId: '0x3909', // CORREGIDO: 14601 decimal = 0x3909 hexadecimal
     chainName: 'Sonic Testnet',
     nativeCurrency: {
       name: 'Sonic',
