@@ -117,7 +117,7 @@ export default function CreateCertificate() {
 
   // Configuración de Sonic Testnet para MetaMask
   const sonicTestnetConfig = {
-    chainId: `0x${SONIC_CHAIN_ID.toString(16)}`,
+    chainId: '0x3909', // CORREGIDO: 14601 decimal = 0x3909 hexadecimal
     chainName: 'Sonic Testnet',
     nativeCurrency: {
       name: 'Sonic',
@@ -128,63 +128,64 @@ export default function CreateCertificate() {
     blockExplorerUrls: ['https://testnet.soniclabs.com/'],
   };
 
+  // Función para convertir BigInt a Number
+  const convertBigIntToNumber = (bigIntValue) => {
+    if (typeof bigIntValue === 'bigint') {
+      return Number(bigIntValue);
+    }
+    return Number(bigIntValue);
+  };
+
   useEffect(() => {
     checkWalletConnection();
     setupEventListeners();
   }, []);
 
- const checkWalletConnection = async () => {
-  if (window.ethereum) {
-    try {
-      const accounts = await window.ethereum.request({ 
-        method: 'eth_accounts' 
-      });
-      
-      if (accounts.length > 0) {
-        const web3Instance = new Web3(window.ethereum);
-        const networkId = await web3Instance.eth.getChainId();
+  const checkWalletConnection = async () => {
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ 
+          method: 'eth_accounts' 
+        });
         
-        // Convertir BigInt a Number
-        const networkIdNumber = Number(networkId);
-        
-        console.log("🔗 ChainID detectado:", networkId);
-        console.log("🔗 ChainID convertido:", networkIdNumber);
-        console.log("🔗 ChainID esperado:", SONIC_CHAIN_ID);
-        console.log("🔗 ¿Red correcta?", networkIdNumber === SONIC_CHAIN_ID);
-        
-        setWeb3(web3Instance);
-        setAccount(accounts[0]);
-        setNetworkId(networkIdNumber); // Guardar como Number
+        if (accounts.length > 0) {
+          const web3Instance = new Web3(window.ethereum);
+          const networkId = await web3Instance.eth.getChainId();
+          
+          // Convertir BigInt a Number
+          const networkIdNumber = convertBigIntToNumber(networkId);
+          
+          console.log("🔗 ChainID detectado:", networkId);
+          console.log("🔗 ChainID convertido:", networkIdNumber);
+          console.log("🔗 ChainID esperado:", SONIC_CHAIN_ID);
+          console.log("🔗 ¿Red correcta?", networkIdNumber === SONIC_CHAIN_ID);
+          
+          setWeb3(web3Instance);
+          setAccount(accounts[0]);
+          setNetworkId(networkIdNumber);
+        }
+      } catch (error) {
+        console.error('Error checking wallet connection:', error);
       }
-    } catch (error) {
-      console.error('Error checking wallet connection:', error);
     }
-  }
-};
+  };
 
-const setupEventListeners = () => {
-  if (window.ethereum) {
-    window.ethereum.on('accountsChanged', (accounts) => {
-      if (accounts.length > 0) {
-        setAccount(accounts[0]);
-      } else {
-        setAccount(null);
-        setWeb3(null);
-        setNetworkId(null);
-      }
-    });
-
-    window.ethereum.on('chainChanged', (chainId) => {
-      // chainId viene como string hexadecimal, convertir a Number
-      const newChainId = parseInt(chainId, 16);
-      setNetworkId(newChainId);
-      window.location.reload();
-    });
-  }
-};
+  const setupEventListeners = () => {
+    if (window.ethereum) {
+      window.ethereum.on('accountsChanged', (accounts) => {
+        if (accounts.length > 0) {
+          setAccount(accounts[0]);
+        } else {
+          setAccount(null);
+          setWeb3(null);
+          setNetworkId(null);
+        }
+      });
 
       window.ethereum.on('chainChanged', (chainId) => {
-        setNetworkId(parseInt(chainId, 16));
+        // chainId viene como string hexadecimal, convertir a Number
+        const newChainId = parseInt(chainId, 16);
+        setNetworkId(newChainId);
         window.location.reload();
       });
     }
@@ -205,15 +206,16 @@ const setupEventListeners = () => {
 
       const web3Instance = new Web3(window.ethereum);
       const currentChainId = await web3Instance.eth.getChainId();
+      const currentChainIdNumber = convertBigIntToNumber(currentChainId);
 
       // Verificar si estamos en Sonic Testnet
-      if (currentChainId !== SONIC_CHAIN_ID) {
+      if (currentChainIdNumber !== SONIC_CHAIN_ID) {
         await switchToSonicNetwork();
       }
 
       setWeb3(web3Instance);
       setAccount(accounts[0]);
-      setNetworkId(currentChainId);
+      setNetworkId(currentChainIdNumber);
 
     } catch (error) {
       console.error('Error connecting wallet:', error);
@@ -295,7 +297,7 @@ const setupEventListeners = () => {
         formData.courseHash
       ).send({ 
         from: account,
-        gas: Math.floor(gasEstimate * 1.2) // Añadir 20% de margen
+        gas: Math.floor(convertBigIntToNumber(gasEstimate) * 1.2) // Añadir 20% de margen
       });
 
       console.log("✅ Transacción exitosa:", transaction);
