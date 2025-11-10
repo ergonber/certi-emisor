@@ -20,12 +20,14 @@ export const connectWallet = async () => {
 };
 
 export const getNetworkId = async (web3) => {
-  return await web3.eth.getChainId();
+  const chainId = await web3.eth.getChainId();
+  // Convertir BigInt a Number para comparación
+  return Number(chainId);
 };
 
 export const switchToSonicNetwork = async () => {
   const sonicConfig = {
-    chainId: '0x3909', // CORREGIDO: 14601 decimal = 0x3909 hexadecimal
+    chainId: '0x3909', // 14601 decimal = 0x3909 hexadecimal
     chainName: 'Sonic Testnet',
     nativeCurrency: {
       name: 'Sonic',
