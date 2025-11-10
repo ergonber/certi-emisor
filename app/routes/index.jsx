@@ -134,25 +134,28 @@ export default function CreateCertificate() {
   }, []);
 
   const checkWalletConnection = async () => {
-    if (window.ethereum) {
-      try {
-        const accounts = await window.ethereum.request({ 
-          method: 'eth_accounts' 
-        });
+  if (window.ethereum) {
+    try {
+      const accounts = await window.ethereum.request({ 
+        method: 'eth_accounts' 
+      });
+      
+      if (accounts.length > 0) {
+        const web3Instance = new Web3(window.ethereum);
+        const networkId = await web3Instance.eth.getChainId();
         
-        if (accounts.length > 0) {
-          const web3Instance = new Web3(window.ethereum);
-          const networkId = await web3Instance.eth.getChainId();
-          
-          setWeb3(web3Instance);
-          setAccount(accounts[0]);
-          setNetworkId(networkId);
-        }
-      } catch (error) {
-        console.error('Error checking wallet connection:', error);
+        console.log("🔗 ChainID detectado:", networkId); // Para debugging
+        console.log("🔗 ChainID esperado:", SONIC_CHAIN_ID); // Para debugging
+        
+        setWeb3(web3Instance);
+        setAccount(accounts[0]);
+        setNetworkId(networkId);
       }
+    } catch (error) {
+      console.error('Error checking wallet connection:', error);
     }
-  };
+  }
+};
 
   const setupEventListeners = () => {
     if (window.ethereum) {
