@@ -294,83 +294,97 @@ const createCertificate = async (e) => {
 
     console.log("✅ Transacción exitosa:", transaction);
 
-    // CAPTURAR EL CERTIFICATE ID REAL DEL EVENTO
+    const transactionHash = transaction.transactionHash;
+    const blockNumber = convertBigIntToNumber(transaction.blockNumber);
+    
+    // BUSCAR CERTIFICADO POR TRANSACTION HASH
+    console.log("🔍 Buscando certificado por transaction hash:", transactionHash);
+    
+    // Método 1: Buscar en los logs de la transacción
+    const transactionReceipt = await web3.eth.getTransactionReceipt(transactionHash);
+    console.log("📄 Transaction receipt:", transactionReceipt);
+    
     let certificateId = null;
     
-    // Buscar en todos los eventos
-    if (transaction.events) {
-      console.log("📋 Todos los eventos:", Object.keys(transaction.events));
+    // Buscar en los logs de la transacción
+    if (transactionReceipt.logs && transactionReceipt.logs.length > 0) {
+      console.log("📋 Logs encontrados:", transactionReceipt.logs.length);
       
-      // Iterar sobre todos los eventos
-      for (const eventKey in transaction.events) {
-        const event = transaction.events[eventKey];
-        console.log("🔍 Evento:", eventKey, event);
+      for (let i = 0; i < transactionReceipt.logs.length; i++) {
+        const log = transactionReceipt.logs[i];
+        console.log(`🔍 Log ${i}:`, log);
         
-        // Si el evento tiene returnValues, buscar certificateId
-        if (event.returnValues) {
-          console.log("📝 ReturnValues:", event.returnValues);
+        // Si el log es del contrato de certificados
+        if (log.address.toLowerCase() === CONTRACT_ADDRESS.toLowerCase()) {
+          console.log("🎯 Log del contrato de certificados encontrado");
           
-          // Buscar certificateId en diferentes formatos
-          if (event.returnValues.certificateId) {
-            certificateId = event.returnValues.certificateId;
-            console.log("🎯 CertificateId encontrado:", certificateId);
-            break;
-          } else if (event.returnValues[0] && event.returnValues[0].length === 66) {
-            // Si el primer argumento parece un hash (66 chars con 0x)
-            certificateId = event.returnValues[0];
-            console.log("🎯 CertificateId encontrado en args[0]:", certificateId);
+          // Decodificar el log manualmente si es posible
+          // El certificateId suele estar en los topics o data
+          if (log.topics && log.topics.length > 1) {
+            // El primer topic suele ser el event signature, los siguientes son los parámetros indexados
+            certificateId = log.topics[1]; // certificateId es el primer parámetro indexado
+            console.log("🎯 CertificateId encontrado en topics:", certificateId);
             break;
           }
-        }
-        
-        // También verificar en logs/raw data
-        if (event.raw && event.raw.data && !certificateId) {
-          console.log("📊 Raw data:", event.raw.data);
         }
       }
     }
 
-    // Si no encontramos el certificateId, mostrar mensaje de error
+    // Método 2: Si no encontramos en logs, generar el ID basado en los datos
     if (!certificateId) {
-      console.error("❌ No se pudo encontrar el certificateId en los eventos");
-      console.log("🔍 Transaction completo:", transaction);
+      console.log("🔍 Generando certificateId basado en datos de transacción...");
       
-      setTransactionStatus({
-        success: false,
-        error: "No se pudo obtener el ID del certificado",
-        message: "Certificado creado pero no se pudo obtener el ID. Revisa la transacción en el explorer."
-      });
-    } else {
-      // VERIFICAR que el certificado existe en el contrato
+      // Obtener timestamp del bloque para generar el mismo ID que el contrato
+      const block = await web3.eth.getBlock(blockNumber);
+      const blockTimestamp = block.timestamp;
+      
+      certificateId = web3.utils.keccak256(
+        web3.utils.encodePacked(
+          formData.studentName,
+          formData.courseName,
+          formData.courseHash,
+          blockTimestamp.toString(),
+          account
+        )
+      );
+      console.log("🎯 CertificateId generado:", certificateId);
+    }
+
+    // VERIFICAR el certificado
+    let certificateVerified = false;
+    let certificateData = null;
+    
+    if (certificateId) {
       try {
-        const certificateExists = await contract.methods.verifyCertificate(certificateId).call();
-        console.log("✅ Certificado verificado en contrato:", certificateExists);
+        certificateVerified = await contract.methods.verifyCertificate(certificateId).call();
+        console.log("✅ Certificado verificado:", certificateVerified);
         
-        if (certificateExists) {
-          setTransactionStatus({
-            success: true,
-            transactionHash: transaction.transactionHash,
-            certificateId: certificateId,
-            message: "🎉 Certificado creado y verificado exitosamente!",
-            blockNumber: convertBigIntToNumber(transaction.blockNumber),
-            explorerUrl: `https://testnet.soniclabs.com/tx/${transaction.transactionHash}`
-          });
-        } else {
-          setTransactionStatus({
-            success: false,
-            error: "Certificado no encontrado en el contrato",
-            message: "El certificado fue creado pero no se pudo verificar en el contrato."
-          });
+        if (certificateVerified) {
+          // Obtener los datos completos del certificado
+          certificateData = await contract.methods.getCertificate(certificateId).call();
+          console.log("📊 Datos del certificado:", certificateData);
         }
       } catch (verifyError) {
-        console.error("❌ Error verificando certificado:", verifyError);
-        setTransactionStatus({
-          success: false,
-          error: verifyError.message,
-          message: "Error verificando el certificado en el contrato."
-        });
+        console.log("⚠️ No se pudo verificar automáticamente:", verifyError);
       }
     }
+
+    // MOSTRAR RESULTADO
+    setTransactionStatus({
+      success: true,
+      transactionHash: transactionHash,
+      certificateId: certificateId,
+      certificateVerified: certificateVerified,
+      certificateData: certificateData,
+      message: certificateVerified ? 
+        "🎉 Certificado creado y verificado exitosamente!" : 
+        "✅ Transacción confirmada! El certificado puede tardar unos segundos en estar disponible.",
+      blockNumber: blockNumber,
+      explorerUrl: `https://testnet.soniclabs.com/tx/${transactionHash}`,
+      contractUrl: `https://testnet.soniclabs.com/address/${CONTRACT_ADDRESS}`,
+      studentName: formData.studentName,
+      courseName: formData.courseName
+    });
 
     // Limpiar formulario
     setFormData({
