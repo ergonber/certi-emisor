@@ -19,7 +19,7 @@ export default function CreateCertificate() {
   const SONIC_RPC_URL = "https://rpc.testnet.soniclabs.com";
   const SONIC_CHAIN_ID = 14601;
 
-  // ABI SIMPLIFICADO - Solo las funciones esenciales
+  // ABI
   const CONTRACT_ABI = [
     {
       "inputs": [
@@ -115,7 +115,6 @@ export default function CreateCertificate() {
     }
   ];
 
-  // Configuración de Sonic Testnet
   const sonicTestnetConfig = {
     chainId: '0x3909',
     chainName: 'Sonic Testnet',
@@ -128,7 +127,6 @@ export default function CreateCertificate() {
     blockExplorerUrls: ['https://testnet.soniclabs.com/'],
   };
 
-  // Función auxiliar para convertir BigInt
   const convertBigIntToNumber = (bigIntValue) => {
     if (!bigIntValue) return 0;
     if (typeof bigIntValue === 'bigint') {
@@ -252,170 +250,155 @@ export default function CreateCertificate() {
     }));
   };
 
-const createCertificate = async (e) => {
-  e.preventDefault();
-  
-  if (!account || !web3) {
-    alert('Por favor conecta tu wallet primero');
-    return;
-  }
-
-  if (networkId !== SONIC_CHAIN_ID) {
-    alert('Por favor cambia a Sonic Testnet en MetaMask');
-    return;
-  }
-
-  setLoading(true);
-  setTransactionStatus(null);
-
-  try {
-    console.log("🚀 INICIANDO CREACIÓN DE CERTIFICADO");
+  const createCertificate = async (e) => {
+    e.preventDefault();
     
-    const contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+    if (!account || !web3) {
+      alert('Por favor conecta tu wallet primero');
+      return;
+    }
 
-    // Estimar gas
-    const gasEstimate = await contract.methods.createCertificate(
-      formData.studentName,
-      formData.courseName, 
-      formData.courseHash
-    ).estimateGas({ from: account });
+    if (networkId !== SONIC_CHAIN_ID) {
+      alert('Por favor cambia a Sonic Testnet en MetaMask');
+      return;
+    }
 
-    console.log("⛽ Gas estimado:", gasEstimate);
+    setLoading(true);
+    setTransactionStatus(null);
 
-    // Enviar transacción
-    const transaction = await contract.methods.createCertificate(
-      formData.studentName,
-      formData.courseName, 
-      formData.courseHash
-    ).send({ 
-      from: account,
-      gas: Math.floor(convertBigIntToNumber(gasEstimate) * 1.2)
-    });
-
-    console.log("✅ Transacción exitosa:", transaction);
-
-    const transactionHash = transaction.transactionHash;
-    const blockNumber = convertBigIntToNumber(transaction.blockNumber);
-    
-    // BUSCAR CERTIFICADO POR TRANSACTION HASH
-    console.log("🔍 Buscando certificado por transaction hash:", transactionHash);
-    
-    // Método 1: Buscar en los logs de la transacción
-    const transactionReceipt = await web3.eth.getTransactionReceipt(transactionHash);
-    console.log("📄 Transaction receipt:", transactionReceipt);
-    
-    let certificateId = null;
-    
-    // Buscar en los logs de la transacción
-    if (transactionReceipt.logs && transactionReceipt.logs.length > 0) {
-      console.log("📋 Logs encontrados:", transactionReceipt.logs.length);
+    try {
+      console.log("🚀 INICIANDO CREACIÓN DE CERTIFICADO");
       
-      for (let i = 0; i < transactionReceipt.logs.length; i++) {
-        const log = transactionReceipt.logs[i];
-        console.log(`🔍 Log ${i}:`, log);
+      const contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+
+      const gasEstimate = await contract.methods.createCertificate(
+        formData.studentName,
+        formData.courseName, 
+        formData.courseHash
+      ).estimateGas({ from: account });
+
+      console.log("⛽ Gas estimado:", gasEstimate);
+
+      const transaction = await contract.methods.createCertificate(
+        formData.studentName,
+        formData.courseName, 
+        formData.courseHash
+      ).send({ 
+        from: account,
+        gas: Math.floor(convertBigIntToNumber(gasEstimate) * 1.2)
+      });
+
+      console.log("✅ Transacción exitosa:", transaction);
+
+      const transactionHash = transaction.transactionHash;
+      const blockNumber = convertBigIntToNumber(transaction.blockNumber);
+      
+      console.log("🔍 Buscando certificado por transaction hash:", transactionHash);
+      
+      const transactionReceipt = await web3.eth.getTransactionReceipt(transactionHash);
+      console.log("📄 Transaction receipt:", transactionReceipt);
+      
+      let certificateId = null;
+      
+      if (transactionReceipt.logs && transactionReceipt.logs.length > 0) {
+        console.log("📋 Logs encontrados:", transactionReceipt.logs.length);
         
-        // Si el log es del contrato de certificados
-        if (log.address.toLowerCase() === CONTRACT_ADDRESS.toLowerCase()) {
-          console.log("🎯 Log del contrato de certificados encontrado");
+        for (let i = 0; i < transactionReceipt.logs.length; i++) {
+          const log = transactionReceipt.logs[i];
+          console.log(`🔍 Log ${i}:`, log);
           
-          // Decodificar el log manualmente si es posible
-          // El certificateId suele estar en los topics o data
-          if (log.topics && log.topics.length > 1) {
-            // El primer topic suele ser el event signature, los siguientes son los parámetros indexados
-            certificateId = log.topics[1]; // certificateId es el primer parámetro indexado
-            console.log("🎯 CertificateId encontrado en topics:", certificateId);
-            break;
+          if (log.address.toLowerCase() === CONTRACT_ADDRESS.toLowerCase()) {
+            console.log("🎯 Log del contrato de certificados encontrado");
+            
+            if (log.topics && log.topics.length > 1) {
+              certificateId = log.topics[1];
+              console.log("🎯 CertificateId encontrado en topics:", certificateId);
+              break;
+            }
           }
         }
       }
-    }
 
-    // Método 2: Si no encontramos en logs, generar el ID basado en los datos
-    if (!certificateId) {
-      console.log("🔍 Generando certificateId basado en datos de transacción...");
-      
-      // Obtener timestamp del bloque para generar el mismo ID que el contrato
-      const block = await web3.eth.getBlock(blockNumber);
-      const blockTimestamp = block.timestamp;
-      
-      certificateId = web3.utils.keccak256(
-        web3.utils.encodePacked(
-          formData.studentName,
-          formData.courseName,
-          formData.courseHash,
-          blockTimestamp.toString(),
-          account
-        )
-      );
-      console.log("🎯 CertificateId generado:", certificateId);
-    }
-
-    // VERIFICAR el certificado
-    let certificateVerified = false;
-    let certificateData = null;
-    
-    if (certificateId) {
-      try {
-        certificateVerified = await contract.methods.verifyCertificate(certificateId).call();
-        console.log("✅ Certificado verificado:", certificateVerified);
+      if (!certificateId) {
+        console.log("🔍 Generando certificateId basado en datos de transacción...");
         
-        if (certificateVerified) {
-          // Obtener los datos completos del certificado
-          certificateData = await contract.methods.getCertificate(certificateId).call();
-          console.log("📊 Datos del certificado:", certificateData);
-        }
-      } catch (verifyError) {
-        console.log("⚠️ No se pudo verificar automáticamente:", verifyError);
+        const block = await web3.eth.getBlock(blockNumber);
+        const blockTimestamp = block.timestamp;
+        
+        certificateId = web3.utils.keccak256(
+          web3.utils.encodePacked(
+            formData.studentName,
+            formData.courseName,
+            formData.courseHash,
+            blockTimestamp.toString(),
+            account
+          )
+        );
+        console.log("🎯 CertificateId generado:", certificateId);
       }
+
+      let certificateVerified = false;
+      let certificateData = null;
+      
+      if (certificateId) {
+        try {
+          certificateVerified = await contract.methods.verifyCertificate(certificateId).call();
+          console.log("✅ Certificado verificado:", certificateVerified);
+          
+          if (certificateVerified) {
+            certificateData = await contract.methods.getCertificate(certificateId).call();
+            console.log("📊 Datos del certificado:", certificateData);
+          }
+        } catch (verifyError) {
+          console.log("⚠️ No se pudo verificar automáticamente:", verifyError);
+        }
+      }
+
+      setTransactionStatus({
+        success: true,
+        transactionHash: transactionHash,
+        certificateId: certificateId,
+        certificateVerified: certificateVerified,
+        certificateData: certificateData,
+        message: certificateVerified ? 
+          "🎉 Certificado creado y verificado exitosamente!" : 
+          "✅ Transacción confirmada! El certificado puede tardar unos segundos en estar disponible.",
+        blockNumber: blockNumber,
+        explorerUrl: `https://testnet.soniclabs.com/tx/${transactionHash}`,
+        contractUrl: `https://testnet.soniclabs.com/address/${CONTRACT_ADDRESS}`,
+        studentName: formData.studentName,
+        courseName: formData.courseName
+      });
+
+      setFormData({
+        studentName: '',
+        courseName: '',
+        courseHash: ''
+      });
+
+    } catch (error) {
+      console.error("💥 ERROR:", error);
+      
+      let errorMessage = "Error al crear el certificado";
+      
+      if (error.code === 4001) {
+        errorMessage = "Transacción rechazada por el usuario";
+      } else if (error.message.includes("insufficient funds")) {
+        errorMessage = "Fondos insuficientes para pagar el gas";
+      } else if (error.message.includes("execution reverted")) {
+        const revertMatch = error.message.match(/execution reverted: (.+)/);
+        errorMessage = revertMatch ? `Contrato: ${revertMatch[1]}` : "El contrato rechazó la transacción";
+      }
+
+      setTransactionStatus({
+        success: false,
+        error: error.message,
+        message: errorMessage
+      });
     }
 
-    // MOSTRAR RESULTADO
-    setTransactionStatus({
-      success: true,
-      transactionHash: transactionHash,
-      certificateId: certificateId,
-      certificateVerified: certificateVerified,
-      certificateData: certificateData,
-      message: certificateVerified ? 
-        "🎉 Certificado creado y verificado exitosamente!" : 
-        "✅ Transacción confirmada! El certificado puede tardar unos segundos en estar disponible.",
-      blockNumber: blockNumber,
-      explorerUrl: `https://testnet.soniclabs.com/tx/${transactionHash}`,
-      contractUrl: `https://testnet.soniclabs.com/address/${CONTRACT_ADDRESS}`,
-      studentName: formData.studentName,
-      courseName: formData.courseName
-    });
-
-    // Limpiar formulario
-    setFormData({
-      studentName: '',
-      courseName: '',
-      courseHash: ''
-    });
-
-  } catch (error) {
-    console.error("💥 ERROR:", error);
-    
-    let errorMessage = "Error al crear el certificado";
-    
-    if (error.code === 4001) {
-      errorMessage = "Transacción rechazada por el usuario";
-    } else if (error.message.includes("insufficient funds")) {
-      errorMessage = "Fondos insuficientes para pagar el gas";
-    } else if (error.message.includes("execution reverted")) {
-      const revertMatch = error.message.match(/execution reverted: (.+)/);
-      errorMessage = revertMatch ? `Contrato: ${revertMatch[1]}` : "El contrato rechazó la transacción";
-    }
-
-    setTransactionStatus({
-      success: false,
-      error: error.message,
-      message: errorMessage
-    });
-  }
-
-  setLoading(false);
-};
+    setLoading(false);
+  };
 
   const disconnectWallet = () => {
     setAccount(null);
@@ -557,7 +540,7 @@ const createCertificate = async (e) => {
               <div className={`transaction-result ${transactionStatus.success ? 'success' : 'error'}`}>
                 <div className="result-header">
                   <h3>
-                    {transactionStatus.success ? '✅ Certificado Creado' : '❌ Error'}
+                    {transactionStatus.success ? '✅ Transacción Exitosa' : '❌ Error'}
                   </h3>
                   <p>{transactionStatus.message}</p>
                 </div>
@@ -565,9 +548,27 @@ const createCertificate = async (e) => {
                 {transactionStatus.success && (
                   <div className="transaction-details">
                     <div className="detail-row">
+                      <strong>👤 Estudiante:</strong>
+                      <span>{transactionStatus.studentName}</span>
+                    </div>
+                    
+                    <div className="detail-row">
+                      <strong>📚 Curso:</strong>
+                      <span>{transactionStatus.courseName}</span>
+                    </div>
+                    
+                    <div className="detail-row">
                       <strong>🆔 ID del Certificado:</strong>
                       <code className="certificate-id">{transactionStatus.certificateId}</code>
                     </div>
+                    
+                    <div className="detail-row">
+                      <strong>✅ Verificación:</strong>
+                      <span className={transactionStatus.certificateVerified ? 'status-verified' : 'status-pending'}>
+                        {transactionStatus.certificateVerified ? 'VERIFICADO' : 'PENDIENTE'}
+                      </span>
+                    </div>
+                    
                     <div className="detail-row">
                       <strong>📫 Transacción:</strong>
                       <a 
@@ -576,13 +577,33 @@ const createCertificate = async (e) => {
                         rel="noopener noreferrer"
                         className="explorer-link"
                       >
-                        Ver en Explorer
+                        Ver en Explorer →
                       </a>
                     </div>
+                    
+                    <div className="detail-row">
+                      <strong>📄 Contrato:</strong>
+                      <a 
+                        href={transactionStatus.contractUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="explorer-link"
+                      >
+                        Ver Contrato →
+                      </a>
+                    </div>
+                    
                     <div className="detail-row">
                       <strong>🔢 Block Number:</strong>
                       <span>{transactionStatus.blockNumber}</span>
                     </div>
+
+                    {!transactionStatus.certificateVerified && (
+                      <div className="verification-note">
+                        <p>💡 <strong>Nota:</strong> El certificado puede tardar unos segundos en estar disponible para verificación.</p>
+                        <p>Puedes intentar verificarlo manualmente en el contrato usando el ID proporcionado.</p>
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -885,6 +906,35 @@ const createCertificate = async (e) => {
         
         .explorer-link:hover {
           text-decoration: underline;
+        }
+        
+        .status-verified {
+          color: #28a745;
+          font-weight: bold;
+          background: #d4edda;
+          padding: 4px 8px;
+          border-radius: 4px;
+        }
+        
+        .status-pending {
+          color: #ffc107;
+          font-weight: bold;
+          background: #fff3cd;
+          padding: 4px 8px;
+          border-radius: 4px;
+        }
+        
+        .verification-note {
+          background: #e7f3ff;
+          padding: 15px;
+          border-radius: 8px;
+          margin-top: 15px;
+          border-left: 4px solid #007bff;
+        }
+        
+        .verification-note p {
+          margin: 5px 0;
+          font-size: 14px;
         }
         
         .system-info {
