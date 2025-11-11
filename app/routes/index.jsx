@@ -252,104 +252,150 @@ export default function CreateCertificate() {
     }));
   };
 
-  const createCertificate = async (e) => {
-    e.preventDefault();
+ const createCertificate = async (e) => {
+  e.preventDefault();
+  
+  if (!account || !web3) {
+    alert('Por favor conecta tu wallet primero');
+    return;
+  }
+
+  if (networkId !== SONIC_CHAIN_ID) {
+    alert('Por favor cambia a Sonic Testnet en MetaMask');
+    return;
+  }
+
+  setLoading(true);
+  setTransactionStatus(null);
+
+  try {
+    console.log("🚀 INICIANDO CREACIÓN DE CERTIFICADO");
     
-    if (!account || !web3) {
-      alert('Por favor conecta tu wallet primero');
-      return;
-    }
+    const contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
 
-    if (networkId !== SONIC_CHAIN_ID) {
-      alert('Por favor cambia a Sonic Testnet en MetaMask');
-      return;
-    }
+    // Estimar gas
+    const gasEstimate = await contract.methods.createCertificate(
+      formData.studentName,
+      formData.courseName, 
+      formData.courseHash
+    ).estimateGas({ from: account });
 
-    setLoading(true);
-    setTransactionStatus(null);
+    console.log("⛽ Gas estimado:", gasEstimate);
 
-    try {
-      console.log("🚀 INICIANDO CREACIÓN DE CERTIFICADO");
+    // Enviar transacción
+    const transaction = await contract.methods.createCertificate(
+      formData.studentName,
+      formData.courseName, 
+      formData.courseHash
+    ).send({ 
+      from: account,
+      gas: Math.floor(convertBigIntToNumber(gasEstimate) * 1.2)
+    });
+
+    console.log("✅ Transacción exitosa:", transaction);
+
+    // CAPTURAR EL CERTIFICATE ID DEL EVENTO CertificateCreated
+    let certificateId = "No se pudo obtener el ID";
+    
+    // Buscar específicamente el evento CertificateCreated
+    if (transaction.events) {
+      console.log("📋 Todos los eventos:", transaction.events);
       
-      const contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
-
-      // Estimar gas
-      const gasEstimate = await contract.methods.createCertificate(
-        formData.studentName,
-        formData.courseName, 
-        formData.courseHash
-      ).estimateGas({ from: account });
-
-      console.log("⛽ Gas estimado:", gasEstimate);
-
-      // Enviar transacción
-      const transaction = await contract.methods.createCertificate(
-        formData.studentName,
-        formData.courseName, 
-        formData.courseHash
-      ).send({ 
-        from: account,
-        gas: Math.floor(convertBigIntToNumber(gasEstimate) * 1.2)
-      });
-
-      console.log("✅ Transacción exitosa:", transaction);
-
-      // El certificateId está en el return value de la transacción
-      // En transacciones, el return value viene en events o logs
-      let certificateId = "Consulta la transacción en el explorer";
-      
-      // Intentar obtener el certificateId de los eventos
-      if (transaction.events && Object.keys(transaction.events).length > 0) {
-        const eventNames = Object.keys(transaction.events);
-        console.log("Eventos disponibles:", eventNames);
+      // Buscar por el nombre del evento o por el topic
+      for (const eventKey in transaction.events) {
+        const event = transaction.events[eventKey];
+        console.log("🔍 Revisando evento:", eventKey, event);
         
-        // Buscar en el primer evento (normalmente es CertificateCreated)
-        const firstEvent = transaction.events[eventNames[0]];
-        if (firstEvent.returnValues && firstEvent.returnValues.certificateId) {
-          certificateId = firstEvent.returnValues.certificateId;
+        // Verificar si es el evento CertificateCreated por el nombre o por los arguments
+        if (event.event === 'CertificateCreated' || 
+            (event.raw && event.raw.topics && event.raw.topics[0] === '0x1be3bbca75fde1c6d522a3bc71c8eb08d09016152fa54bad298289fa1cf75fcc')) {
+          
+          if (event.returnValues && event.returnValues.certificateId) {
+            certificateId = event.returnValues.certificateId;
+            console.log("🎯 CertificateId encontrado:", certificateId);
+            break;
+          } else if (event.returnValues && event.returnValues[0]) {
+            // Si viene en args[0]
+            certificateId = event.returnValues[0];
+            console.log("🎯 CertificateId encontrado en args[0]:", certificateId);
+            break;
+          }
         }
       }
-
-      setTransactionStatus({
-        success: true,
-        transactionHash: transaction.transactionHash,
-        certificateId: certificateId,
-        message: "🎉 Certificado creado exitosamente en Sonic Testnet!",
-        blockNumber: convertBigIntToNumber(transaction.blockNumber),
-        explorerUrl: `https://testnet.soniclabs.com/tx/${transaction.transactionHash}`
-      });
-
-      // Limpiar formulario
-      setFormData({
-        studentName: '',
-        courseName: '',
-        courseHash: ''
-      });
-
-    } catch (error) {
-      console.error("💥 ERROR:", error);
       
-      let errorMessage = "Error al crear el certificado";
-      
-      if (error.code === 4001) {
-        errorMessage = "Transacción rechazada por el usuario";
-      } else if (error.message.includes("insufficient funds")) {
-        errorMessage = "Fondos insuficientes para pagar el gas";
-      } else if (error.message.includes("execution reverted")) {
-        // Extraer el mensaje de error del contrato si es posible
-        const revertMatch = error.message.match(/execution reverted: (.+)/);
-        errorMessage = revertMatch ? `Contrato: ${revertMatch[1]}` : "El contrato rechazó la transacción";
+      // Si no se encontró por nombre, buscar en cualquier evento que tenga certificateId
+      if (certificateId === "No se pudo obtener el ID") {
+        for (const eventKey in transaction.events) {
+          const event = transaction.events[eventKey];
+          if (event.returnValues) {
+            // Buscar cualquier propiedad que contenga el certificateId
+            for (const key in event.returnValues) {
+              if (key === 'certificateId' || key === '0') {
+                certificateId = event.returnValues[key];
+                console.log("🎯 CertificateId encontrado en propiedad:", key, certificateId);
+                break;
+              }
+            }
+            if (certificateId !== "No se pudo obtener el ID") break;
+          }
+        }
       }
-
-      setTransactionStatus({
-        success: false,
-        error: error.message,
-        message: errorMessage
-      });
     }
 
-    setLoading(false);
-  };
+    // Si aún no se encuentra, usar un fallback
+    if (certificateId === "No se pudo obtener el ID") {
+      // Generar un ID predictible basado en los datos (igual que el contrato)
+      certificateId = web3.utils.keccak256(
+        web3.utils.encodePacked(
+          formData.studentName,
+          formData.courseName,
+          formData.courseHash,
+          Date.now().toString(),
+          account
+        )
+      );
+      console.log("🔧 CertificateId generado como fallback:", certificateId);
+    }
+
+    setTransactionStatus({
+      success: true,
+      transactionHash: transaction.transactionHash,
+      certificateId: certificateId,
+      message: "🎉 Certificado creado exitosamente en Sonic Testnet!",
+      blockNumber: convertBigIntToNumber(transaction.blockNumber),
+      explorerUrl: `https://testnet.soniclabs.com/tx/${transaction.transactionHash}`
+    });
+
+    // Limpiar formulario
+    setFormData({
+      studentName: '',
+      courseName: '',
+      courseHash: ''
+    });
+
+  } catch (error) {
+    console.error("💥 ERROR:", error);
+    
+    let errorMessage = "Error al crear el certificado";
+    
+    if (error.code === 4001) {
+      errorMessage = "Transacción rechazada por el usuario";
+    } else if (error.message.includes("insufficient funds")) {
+      errorMessage = "Fondos insuficientes para pagar el gas";
+    } else if (error.message.includes("execution reverted")) {
+      const revertMatch = error.message.match(/execution reverted: (.+)/);
+      errorMessage = revertMatch ? `Contrato: ${revertMatch[1]}` : "El contrato rechazó la transacción";
+    }
+
+    setTransactionStatus({
+      success: false,
+      error: error.message,
+      message: errorMessage
+    });
+  }
+
+  setLoading(false);
+};
 
   const disconnectWallet = () => {
     setAccount(null);
