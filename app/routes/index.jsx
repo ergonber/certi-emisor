@@ -252,7 +252,7 @@ export default function CreateCertificate() {
     }));
   };
 
- const createCertificate = async (e) => {
+const createCertificate = async (e) => {
   e.preventDefault();
   
   if (!account || !web3) {
@@ -294,77 +294,83 @@ export default function CreateCertificate() {
 
     console.log("✅ Transacción exitosa:", transaction);
 
-    // CAPTURAR EL CERTIFICATE ID DEL EVENTO CertificateCreated
-    let certificateId = "No se pudo obtener el ID";
+    // CAPTURAR EL CERTIFICATE ID REAL DEL EVENTO
+    let certificateId = null;
     
-    // Buscar específicamente el evento CertificateCreated
+    // Buscar en todos los eventos
     if (transaction.events) {
-      console.log("📋 Todos los eventos:", transaction.events);
+      console.log("📋 Todos los eventos:", Object.keys(transaction.events));
       
-      // Buscar por el nombre del evento o por el topic
+      // Iterar sobre todos los eventos
       for (const eventKey in transaction.events) {
         const event = transaction.events[eventKey];
-        console.log("🔍 Revisando evento:", eventKey, event);
+        console.log("🔍 Evento:", eventKey, event);
         
-        // Verificar si es el evento CertificateCreated por el nombre o por los arguments
-        if (event.event === 'CertificateCreated' || 
-            (event.raw && event.raw.topics && event.raw.topics[0] === '0x1be3bbca75fde1c6d522a3bc71c8eb08d09016152fa54bad298289fa1cf75fcc')) {
+        // Si el evento tiene returnValues, buscar certificateId
+        if (event.returnValues) {
+          console.log("📝 ReturnValues:", event.returnValues);
           
-          if (event.returnValues && event.returnValues.certificateId) {
+          // Buscar certificateId en diferentes formatos
+          if (event.returnValues.certificateId) {
             certificateId = event.returnValues.certificateId;
             console.log("🎯 CertificateId encontrado:", certificateId);
             break;
-          } else if (event.returnValues && event.returnValues[0]) {
-            // Si viene en args[0]
+          } else if (event.returnValues[0] && event.returnValues[0].length === 66) {
+            // Si el primer argumento parece un hash (66 chars con 0x)
             certificateId = event.returnValues[0];
             console.log("🎯 CertificateId encontrado en args[0]:", certificateId);
             break;
           }
         }
-      }
-      
-      // Si no se encontró por nombre, buscar en cualquier evento que tenga certificateId
-      if (certificateId === "No se pudo obtener el ID") {
-        for (const eventKey in transaction.events) {
-          const event = transaction.events[eventKey];
-          if (event.returnValues) {
-            // Buscar cualquier propiedad que contenga el certificateId
-            for (const key in event.returnValues) {
-              if (key === 'certificateId' || key === '0') {
-                certificateId = event.returnValues[key];
-                console.log("🎯 CertificateId encontrado en propiedad:", key, certificateId);
-                break;
-              }
-            }
-            if (certificateId !== "No se pudo obtener el ID") break;
-          }
+        
+        // También verificar en logs/raw data
+        if (event.raw && event.raw.data && !certificateId) {
+          console.log("📊 Raw data:", event.raw.data);
         }
       }
     }
 
-    // Si aún no se encuentra, usar un fallback
-    if (certificateId === "No se pudo obtener el ID") {
-      // Generar un ID predictible basado en los datos (igual que el contrato)
-      certificateId = web3.utils.keccak256(
-        web3.utils.encodePacked(
-          formData.studentName,
-          formData.courseName,
-          formData.courseHash,
-          Date.now().toString(),
-          account
-        )
-      );
-      console.log("🔧 CertificateId generado como fallback:", certificateId);
+    // Si no encontramos el certificateId, mostrar mensaje de error
+    if (!certificateId) {
+      console.error("❌ No se pudo encontrar el certificateId en los eventos");
+      console.log("🔍 Transaction completo:", transaction);
+      
+      setTransactionStatus({
+        success: false,
+        error: "No se pudo obtener el ID del certificado",
+        message: "Certificado creado pero no se pudo obtener el ID. Revisa la transacción en el explorer."
+      });
+    } else {
+      // VERIFICAR que el certificado existe en el contrato
+      try {
+        const certificateExists = await contract.methods.verifyCertificate(certificateId).call();
+        console.log("✅ Certificado verificado en contrato:", certificateExists);
+        
+        if (certificateExists) {
+          setTransactionStatus({
+            success: true,
+            transactionHash: transaction.transactionHash,
+            certificateId: certificateId,
+            message: "🎉 Certificado creado y verificado exitosamente!",
+            blockNumber: convertBigIntToNumber(transaction.blockNumber),
+            explorerUrl: `https://testnet.soniclabs.com/tx/${transaction.transactionHash}`
+          });
+        } else {
+          setTransactionStatus({
+            success: false,
+            error: "Certificado no encontrado en el contrato",
+            message: "El certificado fue creado pero no se pudo verificar en el contrato."
+          });
+        }
+      } catch (verifyError) {
+        console.error("❌ Error verificando certificado:", verifyError);
+        setTransactionStatus({
+          success: false,
+          error: verifyError.message,
+          message: "Error verificando el certificado en el contrato."
+        });
+      }
     }
-
-    setTransactionStatus({
-      success: true,
-      transactionHash: transaction.transactionHash,
-      certificateId: certificateId,
-      message: "🎉 Certificado creado exitosamente en Sonic Testnet!",
-      blockNumber: convertBigIntToNumber(transaction.blockNumber),
-      explorerUrl: `https://testnet.soniclabs.com/tx/${transaction.transactionHash}`
-    });
 
     // Limpiar formulario
     setFormData({
