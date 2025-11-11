@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Web3 from 'web3';
+import { CONTRACT_ABI } from '~/utils/contracts';
 
 export default function CreateCertificate() {
   const [formData, setFormData] = useState({
